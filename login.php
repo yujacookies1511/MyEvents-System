@@ -5,7 +5,10 @@ session_set_cookie_params([
 ]);
 
 session_start();
-
+// Cache control headers
+header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
+header("Pragma: no-cache");
+header("Expires: 0");
 $conn = mysqli_connect("localhost", "root", "", "websecproject1");
 
 if (!$conn) {
