@@ -1,5 +1,6 @@
 <?php
 include "auth_admin.php";
+include "activity_log.php";
 
 $conn = mysqli_connect("localhost", "root", "", "websecproject1");
 
@@ -40,6 +41,7 @@ if (isset($_POST['add_event'])) {
     } elseif ($event_time_to <= $event_time_from) {
         $error = "End time must be later than start time.";
     } else {
+
         $stmt = mysqli_prepare(
             $conn,
             "INSERT INTO events
@@ -59,7 +61,18 @@ if (isset($_POST['add_event'])) {
         );
 
         if (mysqli_stmt_execute($stmt)) {
+
+            addActivityLog(
+                $conn,
+                $_SESSION['user_id'],
+                $_SESSION['username'],
+                $_SESSION['role'],
+                "ADD_EVENT",
+                "Admin added event: " . $event_name
+            );
+
             $message = "Event added successfully.";
+
         } else {
             $error = "Failed to add event.";
         }
@@ -81,9 +94,19 @@ if (isset($_POST['update_event'])) {
     $event_time_to = $_POST['event_time_to'];
     $venue = trim($_POST['venue']);
 
-    if ($event_time_to <= $event_time_from) {
+    if (
+        $event_name == "" ||
+        $event_description == "" ||
+        $event_date == "" ||
+        $event_time_from == "" ||
+        $event_time_to == "" ||
+        $venue == ""
+    ) {
+        $error = "All fields are required.";
+    } elseif ($event_time_to <= $event_time_from) {
         $error = "End time must be later than start time.";
     } else {
+
         $stmt = mysqli_prepare(
             $conn,
             "UPDATE events
@@ -109,7 +132,18 @@ if (isset($_POST['update_event'])) {
         );
 
         if (mysqli_stmt_execute($stmt)) {
+
+            addActivityLog(
+                $conn,
+                $_SESSION['user_id'],
+                $_SESSION['username'],
+                $_SESSION['role'],
+                "UPDATE_EVENT",
+                "Admin updated event ID: " . $event_id . " (" . $event_name . ")"
+            );
+
             $message = "Event updated successfully.";
+
         } else {
             $error = "Failed to update event.";
         }
@@ -125,15 +159,42 @@ if (isset($_POST['delete_event'])) {
 
     $event_id = intval($_POST['event_id']);
 
+    $getEvent = mysqli_prepare(
+        $conn,
+        "SELECT event_name
+         FROM events
+         WHERE event_id=?"
+    );
+
+    mysqli_stmt_bind_param($getEvent, "i", $event_id);
+    mysqli_stmt_execute($getEvent);
+
+    $eventResult = mysqli_stmt_get_result($getEvent);
+    $eventData = mysqli_fetch_assoc($eventResult);
+
+    $deleted_event_name = $eventData ? $eventData['event_name'] : "Unknown Event";
+
     $stmt = mysqli_prepare(
         $conn,
-        "DELETE FROM events WHERE event_id=?"
+        "DELETE FROM events
+         WHERE event_id=?"
     );
 
     mysqli_stmt_bind_param($stmt, "i", $event_id);
 
     if (mysqli_stmt_execute($stmt)) {
+
+        addActivityLog(
+            $conn,
+            $_SESSION['user_id'],
+            $_SESSION['username'],
+            $_SESSION['role'],
+            "DELETE_EVENT",
+            "Admin deleted event ID: " . $event_id . " (" . $deleted_event_name . ")"
+        );
+
         $message = "Event deleted successfully.";
+
     } else {
         $error = "Failed to delete event.";
     }
@@ -143,12 +204,18 @@ if (isset($_POST['delete_event'])) {
 $edit_event = null;
 
 if (isset($_GET['edit'])) {
+
     $event_id = intval($_GET['edit']);
 
     $stmt = mysqli_prepare(
         $conn,
-        "SELECT event_id, event_name, event_description, event_date,
-                event_time_from, event_time_to, venue
+        "SELECT event_id,
+                event_name,
+                event_description,
+                event_date,
+                event_time_from,
+                event_time_to,
+                venue
          FROM events
          WHERE event_id=?"
     );
@@ -163,8 +230,13 @@ if (isset($_GET['edit'])) {
 /* EVENT LIST */
 $events = mysqli_query(
     $conn,
-    "SELECT event_id, event_name, event_description, event_date,
-            event_time_from, event_time_to, venue
+    "SELECT event_id,
+            event_name,
+            event_description,
+            event_date,
+            event_time_from,
+            event_time_to,
+            venue
      FROM events
      ORDER BY event_date ASC"
 );
@@ -198,12 +270,13 @@ $events = mysqli_query(
 
         .navbar h2 {
             margin: 0;
+            color: white;
         }
 
         .nav-menu {
             display: flex;
-            gap: 22px;
             align-items: center;
+            gap: 22px;
         }
 
         .nav-menu a {
@@ -224,6 +297,10 @@ $events = mysqli_query(
             border-radius: 8px;
             font-weight: bold;
             cursor: pointer;
+        }
+
+        .logout-btn:hover {
+            background: #08306b;
         }
 
         .container {
@@ -345,6 +422,26 @@ $events = mysqli_query(
         .delete-form {
             margin: 0;
         }
+
+        @media (max-width: 900px) {
+            .navbar {
+                flex-direction: column;
+                gap: 15px;
+            }
+
+            .nav-menu {
+                flex-wrap: wrap;
+                justify-content: center;
+            }
+
+            .time-row {
+                grid-template-columns: 1fr;
+            }
+
+            .container {
+                padding: 20px;
+            }
+        }
     </style>
 </head>
 
@@ -352,12 +449,13 @@ $events = mysqli_query(
 
 <div class="navbar">
     <h2>Event Management System</h2>
-
+    
     <div class="nav-menu">
         <a href="dashboard_admin.php">Dashboard</a>
         <a href="admin_events.php">Manage Events</a>
         <a href="admin_students.php">Students</a>
         <a href="admin_registrations.php">Registrations</a>
+        <a href="admin_activity_logs.php">Activity Logs</a>
 
         <form action="logout.php" method="POST" class="logout-form">
             <input
@@ -483,14 +581,19 @@ $events = mysqli_query(
                 <?php while ($event = mysqli_fetch_assoc($events)) { ?>
                     <tr>
                         <td><?= htmlspecialchars($event['event_name']); ?></td>
+
                         <td><?= htmlspecialchars($event['event_description']); ?></td>
+
                         <td><?= htmlspecialchars($event['event_date']); ?></td>
+
                         <td>
                             <?= htmlspecialchars(date("h:i A", strtotime($event['event_time_from']))); ?>
                             -
                             <?= htmlspecialchars(date("h:i A", strtotime($event['event_time_to']))); ?>
                         </td>
+
                         <td><?= htmlspecialchars($event['venue']); ?></td>
+
                         <td>
                             <div class="action-row">
                                 <a
