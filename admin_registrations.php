@@ -181,6 +181,9 @@ $registrations = mysqli_query(
             Registrations
         </a>
 
+        <a href="admin_activity_logs.php">Activity Logs
+        </a>
+
         <form
             action="logout.php"
             method="POST"
