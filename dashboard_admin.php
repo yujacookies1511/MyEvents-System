@@ -231,6 +231,7 @@ $events = mysqli_query(
         <a href="admin_events.php">Manage Events</a>
         <a href="admin_students.php">Students</a>
         <a href="admin_registrations.php">Registrations</a>
+        <a href="admin_activity_logs.php">Activity Logs</a>
 
         <form action="logout.php" method="POST" class="logout-form">
             <input
